@@ -8,7 +8,8 @@ from tkinter import ttk, filedialog, messagebox
 
 import compare_cpp
 
-cpp_extensions = {".cpp"}
+cpp_extension = {".cpp"}
+python_extension = {".py"}
 
 class AntiPlagApp(tk.Tk):
     def __init__(self):
@@ -18,6 +19,9 @@ class AntiPlagApp(tk.Tk):
         self.minsize(820, 520)
 
         self.lang_var = tk.StringVar(value="C++")
+
+        self._ext_a = None
+        self._ext_b = None
 
         self._compare_thread = None
         self._cancel_event = threading.Event()
@@ -225,7 +229,7 @@ class AntiPlagApp(tk.Tk):
         self.lang_combo = ttk.Combobox(
             lang_frame,
             textvariable=self.lang_var,
-            values=["C++"],
+            values=["C++", "Python"],
             state="readonly",
             width=10
         )
@@ -279,10 +283,7 @@ class AntiPlagApp(tk.Tk):
         self.empty_label.pack(anchor="center", pady=4)
 
     def _choose_file(self, is_first):
-        selected_lang = self.lang_var.get()
-
-        if selected_lang == "C++":
-            filetypes = [("C++ Files", "*.cpp"), ("Все файлы", "*.*")]
+        filetypes = [("Program Files", "*.cpp *.py"), ("Все файлы", "*.*")]
 
         filepath = filedialog.askopenfilename(
             title="Выберите файл программы",
@@ -290,6 +291,18 @@ class AntiPlagApp(tk.Tk):
         )
 
         if filepath:
+            ext = Path(filepath).suffix.lower()
+
+            if ext in python_extension:
+                self.lang_var.set("Python")
+            elif ext in cpp_extension:
+                self.lang_var.set("C++")
+
+            if is_first:
+                self._ext_a = ext
+            else:
+                self._ext_b = ext
+
             try:
                 with open(filepath, "r", encoding="utf-8", errors="replace") as f:
                     content = f.read()
@@ -314,7 +327,7 @@ class AntiPlagApp(tk.Tk):
         self._is_paused = False
 
         self.start_btn.configure(state=tk.DISABLED)
-        self.pause_btn.configure(state=tk.NORMAL, text="⏸  Пауза")
+        self.pause_btn.configure(state=tk.NORMAL, text="Пауза")
         self.cancel_btn.configure(state=tk.NORMAL)
         self.lang_combo.configure(state="disabled")
 
@@ -385,6 +398,27 @@ class AntiPlagApp(tk.Tk):
 
         if lang == "C++":
             result = compare_cpp.compare(text_a, text_b)
+        else:
+            result = {
+                "percent": 63,
+                "criteria": [
+                    {
+                        "name": "Совпадение токенов",
+                        "value": 71,
+                        "note": f"Демонстрационное значение — модуль сравнения для {lang} ещё не реализован",
+                    },
+                    {
+                        "name": "k-строки",
+                        "value": 52,
+                        "note": f"Демонстрационное значение — модуль сравнения для {lang} ещё не реализован",
+                    },
+                    {
+                        "name": "Совпадение по позициям",
+                        "value": 66,
+                        "note": f"Демонстрационное значение — модуль сравнения для {lang} ещё не реализован",
+                    },
+                ],
+            }
 
         if self._wait_or_cancel():
             self._finish_cancelled()
@@ -403,7 +437,7 @@ class AntiPlagApp(tk.Tk):
             self.progress_bar["value"] = 0
             self.progress_label.configure(text="Операция отменена")
             self.start_btn.configure(state=tk.NORMAL)
-            self.pause_btn.configure(state=tk.DISABLED, text="⏸  Пауза")
+            self.pause_btn.configure(state=tk.DISABLED, text="Пауза")
             self.cancel_btn.configure(state=tk.DISABLED)
             self.lang_combo.configure(state="readonly")
             self.score_label.configure(text="-- %", foreground="#5f6368")
@@ -451,7 +485,7 @@ class AntiPlagApp(tk.Tk):
             ).pack(anchor="w")
 
         self.start_btn.configure(state=tk.NORMAL)
-        self.pause_btn.configure(state=tk.DISABLED, text="⏸  Пауза")
+        self.pause_btn.configure(state=tk.DISABLED, text="Пауза")
         self.cancel_btn.configure(state=tk.DISABLED)
         self.lang_combo.configure(state="readonly")
 
