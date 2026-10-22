@@ -7,9 +7,11 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 import compare_cpp
+import compare_pas
 
 cpp_extension = {".cpp"}
 python_extension = {".py"}
+pas_extension = {".pas"}
 
 class AntiPlagApp(tk.Tk):
     def __init__(self):
@@ -229,9 +231,9 @@ class AntiPlagApp(tk.Tk):
         self.lang_combo = ttk.Combobox(
             lang_frame,
             textvariable=self.lang_var,
-            values=["C++", "Python"],
+            values=["C++", "Python", "Pascal ABC"],
             state="readonly",
-            width=10
+            width=12
         )
         self.lang_combo.pack(side=tk.LEFT)
 
@@ -283,7 +285,7 @@ class AntiPlagApp(tk.Tk):
         self.empty_label.pack(anchor="center", pady=4)
 
     def _choose_file(self, is_first):
-        filetypes = [("Program Files", "*.cpp *.py"), ("Все файлы", "*.*")]
+        filetypes = [("Program Files", "*.cpp *.py *.pas"), ("Все файлы", "*.*")]
 
         filepath = filedialog.askopenfilename(
             title="Выберите файл программы",
@@ -295,6 +297,8 @@ class AntiPlagApp(tk.Tk):
 
             if ext in python_extension:
                 self.lang_var.set("Python")
+            elif ext in pas_extension:
+                self.lang_var.set("Pascal ABC")
             elif ext in cpp_extension:
                 self.lang_var.set("C++")
 
@@ -398,23 +402,25 @@ class AntiPlagApp(tk.Tk):
 
         if lang == "C++":
             result = compare_cpp.compare(text_a, text_b)
+        elif lang == "Pascal ABC":
+            result = compare_pas.compare(text_a, text_b)
         else:
             result = {
                 "percent": 63,
                 "criteria": [
                     {
                         "name": "Совпадение токенов",
-                        "value": 71,
+                        "value": None,
                         "note": f"Демонстрационное значение — модуль сравнения для {lang} ещё не реализован",
                     },
                     {
                         "name": "k-строки",
-                        "value": 52,
+                        "value": None,
                         "note": f"Демонстрационное значение — модуль сравнения для {lang} ещё не реализован",
                     },
                     {
                         "name": "Совпадение по позициям",
-                        "value": 66,
+                        "value": None,
                         "note": f"Демонстрационное значение — модуль сравнения для {lang} ещё не реализован",
                     },
                 ],
@@ -491,11 +497,9 @@ class AntiPlagApp(tk.Tk):
 
         self.after(100, lambda: self.canvas.yview_moveto(1.0))
 
-
 def main():
     app = AntiPlagApp()
     app.mainloop()
-
 
 if __name__ == "__main__":
     main()
