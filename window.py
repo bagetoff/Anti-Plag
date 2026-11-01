@@ -13,12 +13,140 @@ cpp_extension = {".cpp"}
 python_extension = {".py"}
 pas_extension = {".pas"}
 
+all_supported_extensions = cpp_extension | python_extension | pas_extension
+
+
+class RoundedFrame(tk.Canvas):
+    def __init__(self, parent, bg_color="#ffffff", border_color="#dadce0", radius=16, border_width=1, **kwargs):
+        super().__init__(parent, bg=parent["bg"] if "bg" in parent.keys() else "#f8f9fa", highlightthickness=0, **kwargs)
+        self.bg_color = bg_color
+        self.border_color = border_color
+        self.radius = radius
+        self.border_width = border_width
+        self.inner_frame = tk.Frame(self, bg=bg_color)
+        self.window_id = self.create_window((0, 0), window=self.inner_frame, anchor="nw")
+
+        self.bind("<Configure>", self._redraw)
+
+    def _draw_round_rect(self, x1, y1, x2, y2, r):
+        points = [
+            x1 + r, y1,
+            x2 - r, y1,
+            x2, y1,
+            x2, y1 + r,
+            x2, y2 - r,
+            x2, y2,
+            x2 - r, y2,
+            x1 + r, y2,
+            x1, y2,
+            x1, y2 - r,
+            x1, y1 + r,
+            x1, y1,
+        ]
+        return self.create_polygon(
+            points,
+            smooth=True,
+            fill=self.bg_color,
+            outline=self.border_color,
+            width=self.border_width,
+            tags="bg_shape"
+        )
+
+    def _redraw(self, event):
+        self.delete("bg_shape")
+        w, h = event.width, event.height
+        pad = self.border_width
+        self._draw_round_rect(pad, pad, w - pad, h - pad, self.radius)
+        self.tag_lower("bg_shape")
+        inner_pad = 8
+        self.coords(self.window_id, inner_pad, inner_pad)
+        self.itemconfigure(self.window_id, width=max(1, w - inner_pad * 2), height=max(1, h - inner_pad * 2))
+
+
+class RoundedButton(tk.Canvas):
+    def __init__(self, parent, text, command=None, bg_color="#e8eaed", hover_color="#dadce0",
+                 text_color="#202124", font=("Segoe UI", 9, "bold"), radius=16, **kwargs):
+        super().__init__(parent, bg=parent["bg"] if "bg" in parent.keys() else "#f8f9fa", highlightthickness=0, **kwargs)
+        self.command = command
+        self.text = text
+        self.bg_color = bg_color
+        self.hover_color = hover_color
+        self.text_color = text_color
+        self.cur_bg = bg_color
+        self.font = font
+        self.radius = radius
+        self._state = tk.NORMAL
+
+        self.bind("<Configure>", self._redraw)
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+        self.bind("<Button-1>", self._on_click)
+
+    def _draw_round_rect(self, x1, y1, x2, y2, r, fill):
+        points = [
+            x1 + r, y1,
+            x2 - r, y1,
+            x2, y1,
+            x2, y1 + r,
+            x2, y2 - r,
+            x2, y2,
+            x2 - r, y2,
+            x1 + r, y2,
+            x1, y2,
+            x1, y2 - r,
+            x1, y1 + r,
+            x1, y1,
+        ]
+
+        return self.create_polygon(points, smooth=True, fill=fill, outline="")
+
+    def _redraw(self, event=None):
+        self.delete("all")
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w <= 1 or h <= 1:
+            return
+
+        fill = "#f1f3f4" if self._state == tk.DISABLED else self.cur_bg
+        fg = "#9aa0a6" if self._state == tk.DISABLED else self.text_color
+
+        self._draw_round_rect(1, 1, w - 1, h - 1, self.radius, fill)
+        self.create_text(w // 2, h // 2, text=self.text, fill=fg, font=self.font)
+
+    def _on_enter(self, e):
+        if self._state == tk.NORMAL:
+            self.cur_bg = self.hover_color
+            self._redraw()
+
+    def _on_leave(self, e):
+        if self._state == tk.NORMAL:
+            self.cur_bg = self.bg_color
+            self._redraw()
+
+    def _on_click(self, e):
+        if self._state == tk.NORMAL and self.command:
+            self.command()
+
+    def configure(self, **kwargs):
+        if "state" in kwargs:
+            self._state = kwargs.pop("state")
+        if "text" in kwargs:
+            self.text = kwargs.pop("text")
+        super().configure(**kwargs)
+        self._redraw()
+
+    def set_text(self, text):
+        self.text = text
+        self._redraw()
+
+
 class AntiPlagApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AntiPlag App")
-        self.geometry("980x780")
+        self.geometry("980x800")
         self.minsize(820, 520)
+        self.configure(bg="#f8f9fa")
 
         self.lang_var = tk.StringVar(value="C++")
 
@@ -43,63 +171,7 @@ class AntiPlagApp(tk.Tk):
             pass
 
         self.style.configure(".", font=("Segoe UI", 10), background="#f8f9fa")
-        self.configure(bg="#f8f9fa")
-
-        self.style.configure(
-            "Header.TLabel",
-            font=("Segoe UI", 16, "bold"),
-            background="#f8f9fa",
-            foreground="#202124"
-        )
-        self.style.configure(
-            "Muted.TLabel",
-            font=("Segoe UI", 9),
-            background="#f8f9fa",
-            foreground="#5f6368"
-        )
-
-        self.style.configure(
-            "CodeBox.TLabelframe",
-            background="#f8f9fa",
-            padding=8,
-            relief="solid",
-            borderwidth=1
-        )
-
-        self.style.configure(
-            "CodeBox.TLabelframe.Label",
-            font=("Segoe UI", 10, "bold"),
-            background="#f8f9fa",
-            foreground="#3c4043"
-        )
-
-        self.style.configure(
-            "TButton",
-            font=("Segoe UI", 9),
-            padding=(10, 5),
-            borderwidth=1
-        )
-
-        self.style.configure(
-            "Accent.TButton",
-            font=("Segoe UI", 9, "bold"),
-            padding=(12, 5),
-            background="#1a73e8",
-            foreground="#ffffff"
-        )
-        self.style.map(
-            "Accent.TButton",
-            background=[("active", "#1557b0"), ("disabled", "#e0e0e0")],
-            foreground=[("disabled", "#9e9e9e")]
-        )
-
-        self.style.configure(
-            "Score.TLabel",
-            font=("Segoe UI", 32, "bold"),
-            background="#f8f9fa",
-            foreground="#5f6368"
-        )
-
+        self.style.configure("TCombobox", padding=4)
         self.style.configure(
             "TProgressbar",
             troughcolor="#e8eaed",
@@ -115,7 +187,7 @@ class AntiPlagApp(tk.Tk):
         self.v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        self.scrollable_content = ttk.Frame(self.canvas, padding=16)
+        self.scrollable_content = tk.Frame(self.canvas, bg="#f8f9fa", padx=16, pady=16)
         self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_content, anchor="nw")
 
         self.scrollable_content.bind("<Configure>", self._on_content_configure)
@@ -160,132 +232,147 @@ class AntiPlagApp(tk.Tk):
         self.canvas.yview_scroll(units, "units")
 
     def _build_content(self):
-        header_frame = ttk.Frame(self.scrollable_content)
-        header_frame.pack(fill=tk.X, pady=(0, 10))
-        ttk.Label(
-            header_frame,
+        header_lbl = tk.Label(
+            self.scrollable_content,
             text="Сравнение программ на списывание",
-            style="Header.TLabel"
-        ).pack(anchor="center")
-
-        paned = ttk.PanedWindow(self.scrollable_content, orient=tk.HORIZONTAL)
-        paned.pack(fill=tk.X, pady=(0, 8))
-
-        frame_a = ttk.LabelFrame(paned, text=" Исходный код (1-ая программа) ", style="CodeBox.TLabelframe")
-        paned.add(frame_a, weight=1)
-
-        btn_row_a = ttk.Frame(frame_a)
-        btn_row_a.pack(fill=tk.X, pady=(0, 4))
-        ttk.Button(
-            btn_row_a,
-            text="Выбрать файл",
-            command=lambda: self._choose_file(is_first=True)
-        ).pack(side=tk.RIGHT)
-
-        self.text_a = tk.Text(
-            frame_a,
-            wrap=tk.NONE,
-            font=("Consolas", 10),
-            height=12,
-            relief=tk.FLAT,
-            bd=1,
-            highlightthickness=1,
-            highlightbackground="#dadce0",
-            highlightcolor="#1a73e8"
+            font=("Segoe UI", 16, "bold"),
+            bg="#f8f9fa",
+            fg="#202124"
         )
-        self.text_a.pack(fill=tk.BOTH, expand=True, pady=(2, 0))
 
-        frame_b = ttk.LabelFrame(paned, text=" Исходный код (2-ая программа) ", style="CodeBox.TLabelframe")
-        paned.add(frame_b, weight=1)
+        header_lbl.pack(anchor="center", pady=(0, 14))
 
-        btn_row_b = ttk.Frame(frame_b)
-        btn_row_b.pack(fill=tk.X, pady=(0, 4))
-        ttk.Button(
-            btn_row_b,
-            text="Выбрать файл",
-            command=lambda: self._choose_file(is_first=False)
-        ).pack(side=tk.RIGHT)
+        codes_container = tk.Frame(self.scrollable_content, bg="#f8f9fa")
+        codes_container.pack(fill=tk.X, pady=(0, 10))
+        codes_container.columnconfigure(0, weight=1)
+        codes_container.columnconfigure(1, weight=1)
 
-        self.text_b = tk.Text(
-            frame_b,
-            wrap=tk.NONE,
-            font=("Consolas", 10),
-            height=12,
-            relief=tk.FLAT,
-            bd=1,
-            highlightthickness=1,
-            highlightbackground="#dadce0",
-            highlightcolor="#1a73e8"
+        frame_a_wrapper = tk.Frame(codes_container, bg="#f8f9fa")
+        frame_a_wrapper.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        top_row_a = tk.Frame(frame_a_wrapper, bg="#f8f9fa")
+        top_row_a.pack(fill=tk.X, pady=(0, 6))
+
+        lbl_a = tk.Label(top_row_a, text="Исходный код (1-ая программа)", font=("Segoe UI", 10, "bold"), bg="#f8f9fa", fg="#3c4043")
+        lbl_a.pack(side=tk.LEFT)
+
+        btn_a = RoundedButton(
+            top_row_a, text="Выбрать файл", command=lambda: self._choose_file(is_first=True),
+            bg_color="#e8eaed", hover_color="#dadce0", text_color="#202124",
+            width=115, height=30, radius=15
         )
-        self.text_b.pack(fill=tk.BOTH, expand=True, pady=(2, 0))
 
-        control_frame = ttk.Frame(self.scrollable_content)
-        control_frame.pack(fill=tk.X, pady=(6, 8))
+        btn_a.pack(side=tk.RIGHT)
 
-        btn_row = ttk.Frame(control_frame)
-        btn_row.pack(fill=tk.X, pady=(0, 6))
+        card_a = RoundedFrame(frame_a_wrapper, bg_color="#ffffff", border_color="#dadce0", radius=14, height=220)
+        card_a.pack(fill=tk.BOTH, expand=True)
+        self.text_a = tk.Text(card_a.inner_frame, wrap=tk.NONE, font=("Consolas", 10), bg="#ffffff", fg="#202124", relief=tk.FLAT, bd=0, highlightthickness=0)
+        self.text_a.pack(fill=tk.BOTH, expand=True)
 
-        lang_frame = ttk.Frame(btn_row)
-        lang_frame.pack(side=tk.LEFT, padx=(0, 12))
-        ttk.Label(lang_frame, text="Язык:", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=(0, 6))
+        frame_b_wrapper = tk.Frame(codes_container, bg="#f8f9fa")
+        frame_b_wrapper.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+
+        top_row_b = tk.Frame(frame_b_wrapper, bg="#f8f9fa")
+        top_row_b.pack(fill=tk.X, pady=(0, 6))
+
+        lbl_b = tk.Label(top_row_b, text="Исходный код (2-ая программа)", font=("Segoe UI", 10, "bold"), bg="#f8f9fa", fg="#3c4043")
+        lbl_b.pack(side=tk.LEFT)
+
+        btn_b = RoundedButton(
+            top_row_b, text="Выбрать файл", command=lambda: self._choose_file(is_first=False),
+            bg_color="#e8eaed", hover_color="#dadce0", text_color="#202124",
+            width=115, height=30, radius=15
+        )
+
+        btn_b.pack(side=tk.RIGHT)
+
+        card_b = RoundedFrame(frame_b_wrapper, bg_color="#ffffff", border_color="#dadce0", radius=14, height=220)
+        card_b.pack(fill=tk.BOTH, expand=True)
+        self.text_b = tk.Text(card_b.inner_frame, wrap=tk.NONE, font=("Consolas", 10), bg="#ffffff", fg="#202124", relief=tk.FLAT, bd=0, highlightthickness=0)
+        self.text_b.pack(fill=tk.BOTH, expand=True)
+
+        control_frame = tk.Frame(self.scrollable_content, bg="#f8f9fa")
+        control_frame.pack(fill=tk.X, pady=(8, 12))
+
+        btn_row = tk.Frame(control_frame, bg="#f8f9fa")
+        btn_row.pack(fill=tk.X, pady=(0, 8))
+
+        lang_box_frame = tk.Frame(btn_row, bg="#f8f9fa")
+        lang_box_frame.pack(side=tk.LEFT, padx=(0, 14))
+
+        tk.Label(lang_box_frame, text="Язык:", font=("Segoe UI", 9, "bold"), bg="#f8f9fa", fg="#3c4043").pack(side=tk.LEFT, padx=(0, 6))
         self.lang_combo = ttk.Combobox(
-            lang_frame,
+            lang_box_frame,
             textvariable=self.lang_var,
             values=["C++", "Python", "Pascal ABC"],
             state="readonly",
-            width=12
+            width=12,
+            font=("Segoe UI", 9)
         )
+
         self.lang_combo.pack(side=tk.LEFT)
 
-        self.start_btn = ttk.Button(
-            btn_row,
-            text="Запустить проверку",
-            style="Accent.TButton",
-            command=self.start_comparison
+        self.start_btn = RoundedButton(
+            btn_row, text="Запустить проверку", command=self.start_comparison,
+            bg_color="#1a73e8", hover_color="#1557b0", text_color="#ffffff",
+            width=180, height=36, radius=18
         )
+
         self.start_btn.pack(side=tk.LEFT, padx=(0, 8))
 
-        self.pause_btn = ttk.Button(
-            btn_row,
-            text="Пауза",
-            state=tk.DISABLED,
-            command=self.toggle_pause
+        self.pause_btn = RoundedButton(
+            btn_row, text="Пауза", command=self.toggle_pause,
+            bg_color="#e8eaed", hover_color="#dadce0", text_color="#202124",
+            width=110, height=36, radius=18
         )
+
+        self.pause_btn.configure(state=tk.DISABLED)
         self.pause_btn.pack(side=tk.LEFT, padx=(0, 8))
 
-        self.cancel_btn = ttk.Button(
-            btn_row,
-            text="Отмена",
-            state=tk.DISABLED,
-            command=self.cancel_comparison
+        self.cancel_btn = RoundedButton(
+            btn_row, text="Отмена", command=self.cancel_comparison,
+            bg_color="#e8eaed", hover_color="#dadce0", text_color="#202124",
+            width=110, height=36, radius=18
         )
+
+        self.cancel_btn.configure(state=tk.DISABLED)
         self.cancel_btn.pack(side=tk.LEFT)
 
-        self.progress_label = ttk.Label(btn_row, text="Готов", style="Muted.TLabel")
+        self.progress_label = tk.Label(btn_row, text="Готов", font=("Segoe UI", 9), bg="#f8f9fa", fg="#5f6368")
         self.progress_label.pack(side=tk.RIGHT, padx=4)
 
         self.progress_bar = ttk.Progressbar(control_frame, orient=tk.HORIZONTAL, mode="determinate")
-        self.progress_bar.pack(fill=tk.X, pady=(2, 0))
+        self.progress_bar.pack(fill=tk.X)
 
-        self.result_frame = ttk.Frame(self.scrollable_content)
-        self.result_frame.pack(fill=tk.X, pady=(10, 20))
+        self.result_card = RoundedFrame(self.scrollable_content, bg_color="#ffffff", border_color="#dadce0", radius=16, height=230)
+        self.result_card.pack(fill=tk.X, pady=(8, 20))
 
-        self.score_label = ttk.Label(self.result_frame, text="-- %", style="Score.TLabel")
-        self.score_label.pack(anchor="center", pady=(0, 6))
+        self.score_label = tk.Label(self.result_card.inner_frame, text="-- %", font=("Segoe UI", 32, "bold"), bg="#ffffff", fg="#5f6368")
+        self.score_label.pack(anchor="center", pady=(4, 6))
 
-        self.criteria_frame = ttk.Frame(self.result_frame)
-        self.criteria_frame.pack(fill=tk.X, padx=10)
+        self.criteria_frame = tk.Frame(self.result_card.inner_frame, bg="#ffffff")
+        self.criteria_frame.pack(fill=tk.X, padx=12, pady=(0, 8))
 
-        self.empty_label = ttk.Label(
+        self.empty_label = tk.Label(
             self.criteria_frame,
             text="Загрузите файлы или вставьте код, после чего запустите проверку",
             font=("Segoe UI", 10),
-            foreground="#5f6368"
+            bg="#ffffff",
+            fg="#5f6368"
         )
         self.empty_label.pack(anchor="center", pady=4)
 
     def _choose_file(self, is_first):
-        filetypes = [("Program Files", "*.cpp *.py *.pas"), ("Все файлы", "*.*")]
+        if is_first:
+            filetypes = [("Program Files", "*.cpp *.py *.pas"), ("Все файлы", "*.*")]
+        else:
+            selected_lang = self.lang_var.get()
+            if selected_lang == "C++":
+                filetypes = [("C++ Files", "*.cpp"), ("Все файлы", "*.*")]
+            elif selected_lang == "Python":
+                filetypes = [("Python Files", "*.py"), ("Все файлы", "*.*")]
+            elif selected_lang == "Pascal ABC":
+                filetypes = [("Pascal Files", "*.pas"), ("Все файлы", "*.*")]
 
         filepath = filedialog.askopenfilename(
             title="Выберите файл программы",
@@ -295,16 +382,34 @@ class AntiPlagApp(tk.Tk):
         if filepath:
             ext = Path(filepath).suffix.lower()
 
-            if ext in python_extension:
-                self.lang_var.set("Python")
-            elif ext in pas_extension:
-                self.lang_var.set("Pascal ABC")
-            elif ext in cpp_extension:
-                self.lang_var.set("C++")
+            if ext not in all_supported_extensions:
+                messagebox.showerror(
+                    "ERROR: Unsupported File Format (UFF E-003)",
+                    f"Неподдерживаемый формат файла: '{ext}'!\n"
+                    "Поддерживаются только исходные файлы C++ (.cpp), Python (.py) и Pascal (.pas)."
+                )
+                return
 
             if is_first:
+                if ext in python_extension:
+                    self.lang_var.set("Python")
+                elif ext in pas_extension:
+                    self.lang_var.set("Pascal ABC")
+                elif ext in cpp_extension:
+                    self.lang_var.set("C++")
+
                 self._ext_a = ext
             else:
+                expected_lang = self.lang_var.get()
+                actual_lang = self._get_lang_for_extension(ext)
+
+                if actual_lang != expected_lang:
+                    messagebox.showerror(
+                        "ERROR: Language Mismatch (LMM E-002)",
+                        f"Для второй программы нужно выбрать файл языка {expected_lang}!"
+                    )
+                    return
+
                 self._ext_b = ext
 
             try:
@@ -316,6 +421,15 @@ class AntiPlagApp(tk.Tk):
             except Exception as e:
                 messagebox.showerror("Ошибка чтения файла", f"Не удалось прочитать файл:\n{e}")
 
+    def _get_lang_for_extension(self, ext):
+        if ext in cpp_extension:
+            return "C++"
+        if ext in python_extension:
+            return "Python"
+        if ext in pas_extension:
+            return "Pascal ABC"
+        return None
+
     def start_comparison(self):
         text_a = self.text_a.get("1.0", tk.END).strip()
         text_b = self.text_b.get("1.0", tk.END).strip()
@@ -326,18 +440,40 @@ class AntiPlagApp(tk.Tk):
 
         lang = self.lang_var.get()
 
+        if self._ext_a and self._ext_b:
+            lang_a = self._get_lang_for_extension(self._ext_a)
+            lang_b = self._get_lang_for_extension(self._ext_b)
+
+            if lang_a != lang_b:
+                messagebox.showerror(
+                    "ERROR: Language Mismatch (LMM E-002)",
+                    f"Невозможно сравнить файлы разных языков программирования!\n\n"
+                    f"Файл 1: {self._ext_a} ({lang_a})\n"
+                    f"Файл 2: {self._ext_b} ({lang_b})\n\n"
+                    "Для проверки загрузите файлы одного и того же языка."
+                )
+                return
+
+            if lang != lang_a:
+                messagebox.showerror(
+                    "ERROR: Language Mode Mismatch (LMM E-004)",
+                    f"Выбранный режим анализа ({lang}) не соответствует расширению загруженных файлов ({self._ext_a})!"
+                )
+                return
+
         self._cancel_event.clear()
         self._pause_event.set()
         self._is_paused = False
 
         self.start_btn.configure(state=tk.DISABLED)
-        self.pause_btn.configure(state=tk.NORMAL, text="Пауза")
+        self.pause_btn.configure(state=tk.NORMAL)
+        self.pause_btn.set_text("Пауза")
         self.cancel_btn.configure(state=tk.NORMAL)
         self.lang_combo.configure(state="disabled")
 
-        self.score_label.configure(text="-- %", foreground="#5f6368")
+        self.score_label.configure(text="-- %", fg="#5f6368")
         self._clear_criteria()
-        self.empty_label.configure(text="Идёт анализ программ...", foreground="#5f6368")
+        self.empty_label.configure(text="Идёт анализ программ...", fg="#5f6368")
         self.empty_label.pack(anchor="center", pady=4)
 
         self.progress_bar["value"] = 0
@@ -354,12 +490,12 @@ class AntiPlagApp(tk.Tk):
         if self._is_paused:
             self._pause_event.set()
             self._is_paused = False
-            self.pause_btn.configure(text="Пауза")
+            self.pause_btn.set_text("Пауза")
             self.progress_label.configure(text="Продолжение работы...")
         else:
             self._pause_event.clear()
             self._is_paused = True
-            self.pause_btn.configure(text="Возобновить")
+            self.pause_btn.set_text("Возобновить")
             self.progress_label.configure(text="Анализ приостановлен")
 
     def cancel_comparison(self):
@@ -443,19 +579,20 @@ class AntiPlagApp(tk.Tk):
             self.progress_bar["value"] = 0
             self.progress_label.configure(text="Операция отменена")
             self.start_btn.configure(state=tk.NORMAL)
-            self.pause_btn.configure(state=tk.DISABLED, text="Пауза")
+            self.pause_btn.configure(state=tk.DISABLED)
+            self.pause_btn.set_text("⏸  Пауза")
             self.cancel_btn.configure(state=tk.DISABLED)
             self.lang_combo.configure(state="readonly")
-            self.score_label.configure(text="-- %", foreground="#5f6368")
+            self.score_label.configure(text="-- %", fg="#5f6368")
             self._clear_criteria()
-            self.empty_label.configure(text="Проверка была отменена пользователем", foreground="#5f6368")
+            self.empty_label.configure(text="Проверка была отменена пользователем", fg="#5f6368")
             self.empty_label.pack(anchor="center", pady=4)
         self.after(0, _cb)
 
     def _clear_criteria(self):
         for widget in self.criteria_frame.winfo_children():
             widget.destroy()
-        self.empty_label = ttk.Label(self.criteria_frame, font=("Segoe UI", 10))
+        self.empty_label = tk.Label(self.criteria_frame, font=("Segoe UI", 10), bg="#ffffff")
 
     def _show_results(self, result):
         pct = result.get("percent", 0)
@@ -468,38 +605,42 @@ class AntiPlagApp(tk.Tk):
         else:
             color = "#d93025"
 
-        self.score_label.configure(foreground=color)
-
+        self.score_label.configure(fg=color)
         self._clear_criteria()
 
         for c in result.get("criteria", []):
-            row = ttk.Frame(self.criteria_frame)
+            row = tk.Frame(self.criteria_frame, bg="#ffffff")
             row.pack(fill=tk.X, pady=3)
 
-            ttk.Label(
+            tk.Label(
                 row,
                 text=f"•  {c['name']}: {c['value']}%",
                 font=("Segoe UI", 10, "bold"),
-                foreground="#202124"
+                bg="#ffffff",
+                fg="#202124"
             ).pack(anchor="w")
 
-            ttk.Label(
+            tk.Label(
                 row,
                 text=f"    {c['note']}",
                 font=("Segoe UI", 9),
-                foreground="#5f6368"
+                bg="#ffffff",
+                fg="#5f6368"
             ).pack(anchor="w")
 
         self.start_btn.configure(state=tk.NORMAL)
-        self.pause_btn.configure(state=tk.DISABLED, text="Пауза")
+        self.pause_btn.configure(state=tk.DISABLED)
+        self.pause_btn.set_text("⏸  Пауза")
         self.cancel_btn.configure(state=tk.DISABLED)
         self.lang_combo.configure(state="readonly")
 
         self.after(100, lambda: self.canvas.yview_moveto(1.0))
 
+
 def main():
     app = AntiPlagApp()
     app.mainloop()
+
 
 if __name__ == "__main__":
     main()
