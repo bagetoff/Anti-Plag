@@ -2,27 +2,20 @@ from collections import Counter
 
 import tokenizer_cpp
 
-NUM_PLACEHOLDER = 1
-STR_PLACEHOLDER = 2
-CHAR_PLACEHOLDER = 3
+NUM_PLACEHOLDER = 'N'
+STR_PLACEHOLDER = 'S'
+CHAR_PLACEHOLDER = 'C'
+IDENT_PLACEHOLDER = 'I'
 
-IDENT_BASE = 10_000
+VOCAB_CHAR_START = 65
 
-VOCAB_BASE = 100
 
 def encode_tokens(tokens, shared_vocab):
-    ident_ids = {}
-
-    next_ident_id = IDENT_BASE
     encoded = []
 
     for kind, value in tokens:
         if kind == "IDENT":
-            if value not in ident_ids:
-                ident_ids[value] = next_ident_id
-                next_ident_id += 1
-
-            encoded.append(ident_ids[value])
+            encoded.append(IDENT_PLACEHOLDER)
         elif kind == "NUMBER":
             encoded.append(NUM_PLACEHOLDER)
         elif kind == "STRING":
@@ -33,7 +26,7 @@ def encode_tokens(tokens, shared_vocab):
             key = (kind, value)
 
             if key not in shared_vocab:
-                shared_vocab[key] = len(shared_vocab) + VOCAB_BASE
+                shared_vocab[key] = chr(VOCAB_CHAR_START + len(shared_vocab))
 
             encoded.append(shared_vocab[key])
 
