@@ -8,6 +8,7 @@ from tkinter import ttk, filedialog, messagebox
 
 import compare_cpp
 import compare_pas
+import highlights
 
 cpp_extension = {".cpp"}
 python_extension = {".py"}
@@ -97,7 +98,6 @@ class RoundedButton(tk.Canvas):
             x1, y1 + r,
             x1, y1,
         ]
-
         return self.create_polygon(points, smooth=True, fill=fill, outline="")
 
     def _redraw(self, event=None):
@@ -140,18 +140,184 @@ class RoundedButton(tk.Canvas):
         self._redraw()
 
 
+class RoundedProgressBar(tk.Canvas):
+    def __init__(self, parent, height=12, bg_color="#ffffff", border_color="#dadce0",
+                 fill_color="#1a73e8", **kwargs):
+        parent_bg = parent["bg"] if "bg" in parent.keys() else "#f8f9fa"
+        super().__init__(parent, height=height, bg=parent_bg, highlightthickness=0, bd=0, **kwargs)
+        self.bar_height = height
+        self.bg_color = bg_color
+        self.border_color = border_color
+        self.fill_color = fill_color
+        self._value = 0
+
+        self.bind("<Configure>", self._redraw)
+
+    def __setitem__(self, key, value):
+        if key == "value":
+            self._value = max(0, min(100, float(value)))
+            self._redraw()
+        else:
+            super().__setitem__(key, value)
+
+    def __getitem__(self, key):
+        if key == "value":
+            return self._value
+        return super().__getitem__(key)
+
+    def _redraw(self, event=None):
+        self.delete("all")
+        w = self.winfo_width()
+        h = self.bar_height
+        if w <= h:
+            return
+
+        cy = h / 2.0
+        r_outer = h / 2.0
+        r_inner = (h - 2) / 2.0
+
+        self.create_line(
+            r_outer, cy, w - r_outer, cy,
+            width=h, fill=self.border_color, capstyle=tk.ROUND
+        )
+
+        self.create_line(
+            r_outer, cy, w - r_outer, cy,
+            width=h - 2, fill=self.bg_color, capstyle=tk.ROUND
+        )
+
+        if self._value > 0:
+            avail_w = w - h
+            fill_end = r_outer + avail_w * (self._value / 100.0)
+            self.create_line(
+                r_outer, cy, fill_end, cy,
+                width=h - 2, fill=self.fill_color, capstyle=tk.ROUND
+            )
+
+
+class ThinScrollbar(tk.Canvas):
+    def __init__(self, parent, command=None, width=8, bg_color="#f8f9fa",
+                 thumb_color="#c1c6cc", hover_color="#9aa0a6", **kwargs):
+        super().__init__(parent, width=width, bg=bg_color, highlightthickness=0, bd=0, **kwargs)
+        self.command = command
+        self.bar_width = width
+        self.thumb_color = thumb_color
+        self.hover_color = hover_color
+        self.cur_color = thumb_color
+
+        self._first = 0.0
+        self._last = 1.0
+        self._drag_start_y = None
+        self._drag_start_first = 0.0
+
+        self.bind("<Configure>", self._redraw)
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+        self.bind("<ButtonPress-1>", self._on_press)
+        self.bind("<B1-Motion>", self._on_drag)
+        self.bind("<ButtonRelease-1>", self._on_release)
+
+    def set(self, first, last):
+        self._first = float(first)
+        self._last = float(last)
+        self._redraw()
+
+    def _redraw(self, event=None):
+        self.delete("all")
+        if self._first <= 0.0 and self._last >= 1.0:
+            return
+
+        h = self.winfo_height()
+        w = self.bar_width
+        if h <= 10:
+            return
+
+        pad = 4
+        track_h = h - pad * 2
+        y1 = pad + self._first * track_h
+        y2 = pad + self._last * track_h
+
+        min_thumb = 28
+        if y2 - y1 < min_thumb:
+            y2 = min(h - pad, y1 + min_thumb)
+            y1 = max(pad, y2 - min_thumb)
+
+        cx = w / 2.0
+        self.create_line(cx, y1, cx, y2, width=w - 2, fill=self.cur_color, capstyle=tk.ROUND)
+
+    def _on_enter(self, event):
+        self.cur_color = self.hover_color
+        self._redraw()
+
+    def _on_leave(self, event):
+        if self._drag_start_y is None:
+            self.cur_color = self.thumb_color
+            self._redraw()
+
+    def _on_press(self, event):
+        h = self.winfo_height()
+        pad = 4
+        track_h = max(1, h - pad * 2)
+        y1 = pad + self._first * track_h
+        y2 = pad + self._last * track_h
+
+        if y1 <= event.y <= y2:
+            self._drag_start_y = event.y
+            self._drag_start_first = self._first
+        else:
+            span = self._last - self._first
+            target = (event.y - pad) / track_h - span / 2.0
+            target = max(0.0, min(1.0 - span, target))
+            if self.command:
+                self.command("moveto", target)
+
+    def _on_drag(self, event):
+        if self._drag_start_y is None:
+            return
+        h = self.winfo_height()
+        pad = 4
+        track_h = max(1, h - pad * 2)
+        dy = event.y - self._drag_start_y
+        delta = dy / track_h
+        span = self._last - self._first
+        target = max(0.0, min(1.0 - span, self._drag_start_first + delta))
+        if self.command:
+            self.command("moveto", target)
+
+    def _on_release(self, event):
+        self._drag_start_y = None
+
+
+class ColorPillBadge(tk.Canvas):
+    def __init__(self, parent, color="#9e4a10", width=24, height=12, **kwargs):
+        parent_bg = parent["bg"] if "bg" in parent.keys() else "#f8f9fa"
+        super().__init__(parent, width=width, height=height, bg=parent_bg, highlightthickness=0, bd=0, **kwargs)
+        self.color = color
+        self.pill_w = width
+        self.pill_h = height
+        self.bind("<Configure>", self._redraw)
+
+    def _redraw(self, event=None):
+        self.delete("all")
+        r = self.pill_h / 2.0
+        cy = self.pill_h / 2.0
+        self.create_line(r, cy, self.pill_w - r, cy, width=self.pill_h, fill=self.color, capstyle=tk.ROUND)
+
+
 class AntiPlagApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AntiPlag App")
-        self.geometry("980x800")
+        self.geometry("980x920")
         self.minsize(820, 520)
         self.configure(bg="#f8f9fa")
 
         self.lang_var = tk.StringVar(value="C++")
+        self.diff_mode_var = tk.StringVar(value="Сравнение кодов")
 
         self._ext_a = None
         self._ext_b = None
+        self._last_highlights = None
 
         self._compare_thread = None
         self._cancel_event = threading.Event()
@@ -172,19 +338,13 @@ class AntiPlagApp(tk.Tk):
 
         self.style.configure(".", font=("Segoe UI", 10), background="#f8f9fa")
         self.style.configure("TCombobox", padding=4)
-        self.style.configure(
-            "TProgressbar",
-            troughcolor="#e8eaed",
-            background="#1a73e8",
-            thickness=6
-        )
 
     def _build_scrollable_window(self):
         self.canvas = tk.Canvas(self, bg="#f8f9fa", highlightthickness=0)
-        self.v_scrollbar = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.v_scrollbar = ThinScrollbar(self, command=self.canvas.yview, width=8)
         self.canvas.configure(yscrollcommand=self.v_scrollbar.set)
 
-        self.v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 4), pady=4)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self.scrollable_content = tk.Frame(self.canvas, bg="#f8f9fa", padx=16, pady=16)
@@ -212,11 +372,17 @@ class AntiPlagApp(tk.Tk):
         widget = event.widget
         if isinstance(widget, tk.Text):
             if event.delta:
-                widget.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                step = int(-1 * (event.delta / 120))
             elif event.num == 4:
-                widget.yview_scroll(-1, "units")
-            elif event.num == 5:
-                widget.yview_scroll(1, "units")
+                step = -1
+            else:
+                step = 1
+
+            if widget in (self.diff_text_a, self.diff_text_b):
+                self.diff_text_a.yview_scroll(step, "units")
+                self.diff_text_b.yview_scroll(step, "units")
+            else:
+                widget.yview_scroll(step, "units")
             return "break"
 
         units = int(-1 * (event.delta / 120)) if event.delta else (-1 if event.num == 4 else 1)
@@ -239,7 +405,6 @@ class AntiPlagApp(tk.Tk):
             bg="#f8f9fa",
             fg="#202124"
         )
-
         header_lbl.pack(anchor="center", pady=(0, 14))
 
         codes_container = tk.Frame(self.scrollable_content, bg="#f8f9fa")
@@ -261,7 +426,6 @@ class AntiPlagApp(tk.Tk):
             bg_color="#e8eaed", hover_color="#dadce0", text_color="#202124",
             width=115, height=30, radius=15
         )
-
         btn_a.pack(side=tk.RIGHT)
 
         card_a = RoundedFrame(frame_a_wrapper, bg_color="#ffffff", border_color="#dadce0", radius=14, height=220)
@@ -283,7 +447,6 @@ class AntiPlagApp(tk.Tk):
             bg_color="#e8eaed", hover_color="#dadce0", text_color="#202124",
             width=115, height=30, radius=15
         )
-
         btn_b.pack(side=tk.RIGHT)
 
         card_b = RoundedFrame(frame_b_wrapper, bg_color="#ffffff", border_color="#dadce0", radius=14, height=220)
@@ -295,7 +458,7 @@ class AntiPlagApp(tk.Tk):
         control_frame.pack(fill=tk.X, pady=(8, 12))
 
         btn_row = tk.Frame(control_frame, bg="#f8f9fa")
-        btn_row.pack(fill=tk.X, pady=(0, 8))
+        btn_row.pack(fill=tk.X, pady=(0, 10))
 
         lang_box_frame = tk.Frame(btn_row, bg="#f8f9fa")
         lang_box_frame.pack(side=tk.LEFT, padx=(0, 14))
@@ -309,15 +472,13 @@ class AntiPlagApp(tk.Tk):
             width=12,
             font=("Segoe UI", 9)
         )
-
         self.lang_combo.pack(side=tk.LEFT)
 
         self.start_btn = RoundedButton(
             btn_row, text="Запустить проверку", command=self.start_comparison,
             bg_color="#1a73e8", hover_color="#1557b0", text_color="#ffffff",
-            width=180, height=36, radius=18
+            width=165, height=36, radius=18
         )
-
         self.start_btn.pack(side=tk.LEFT, padx=(0, 8))
 
         self.pause_btn = RoundedButton(
@@ -325,27 +486,25 @@ class AntiPlagApp(tk.Tk):
             bg_color="#e8eaed", hover_color="#dadce0", text_color="#202124",
             width=110, height=36, radius=18
         )
-
         self.pause_btn.configure(state=tk.DISABLED)
         self.pause_btn.pack(side=tk.LEFT, padx=(0, 8))
 
         self.cancel_btn = RoundedButton(
             btn_row, text="Отмена", command=self.cancel_comparison,
             bg_color="#e8eaed", hover_color="#dadce0", text_color="#202124",
-            width=110, height=36, radius=18
+            width=100, height=36, radius=18
         )
-
         self.cancel_btn.configure(state=tk.DISABLED)
         self.cancel_btn.pack(side=tk.LEFT)
 
         self.progress_label = tk.Label(btn_row, text="Готов", font=("Segoe UI", 9), bg="#f8f9fa", fg="#5f6368")
         self.progress_label.pack(side=tk.RIGHT, padx=4)
 
-        self.progress_bar = ttk.Progressbar(control_frame, orient=tk.HORIZONTAL, mode="determinate")
+        self.progress_bar = RoundedProgressBar(control_frame, height=12)
         self.progress_bar.pack(fill=tk.X)
 
         self.result_card = RoundedFrame(self.scrollable_content, bg_color="#ffffff", border_color="#dadce0", radius=16, height=230)
-        self.result_card.pack(fill=tk.X, pady=(8, 20))
+        self.result_card.pack(fill=tk.X, pady=(8, 16))
 
         self.score_label = tk.Label(self.result_card.inner_frame, text="-- %", font=("Segoe UI", 32, "bold"), bg="#ffffff", fg="#5f6368")
         self.score_label.pack(anchor="center", pady=(4, 6))
@@ -361,6 +520,132 @@ class AntiPlagApp(tk.Tk):
             fg="#5f6368"
         )
         self.empty_label.pack(anchor="center", pady=4)
+
+        diff_section = tk.Frame(self.scrollable_content, bg="#f8f9fa")
+        diff_section.pack(fill=tk.X, pady=(4, 20))
+
+        diff_header = tk.Frame(diff_section, bg="#f8f9fa")
+        diff_header.pack(fill=tk.X, pady=(0, 8))
+
+        tk.Label(
+            diff_header,
+            text="Режим просмотра:",
+            font=("Segoe UI", 10, "bold"),
+            bg="#f8f9fa",
+            fg="#3c4043"
+        ).pack(side=tk.LEFT, padx=(0, 8))
+
+        self.diff_mode_combo = ttk.Combobox(
+            diff_header,
+            textvariable=self.diff_mode_var,
+            values=["Сравнение кодов", "Сравнение токенов"],
+            state="readonly",
+            width=20,
+            font=("Segoe UI", 9)
+        )
+        self.diff_mode_combo.pack(side=tk.LEFT)
+        self.diff_mode_combo.bind("<<ComboboxSelected>>", self._on_diff_mode_change)
+
+        legend_frame = tk.Frame(diff_header, bg="#f8f9fa")
+        legend_frame.pack(side=tk.RIGHT)
+
+        badge = ColorPillBadge(legend_frame, color="#9e4a10", width=26, height=12)
+        badge.pack(side=tk.LEFT, padx=(0, 6))
+        tk.Label(legend_frame, text="Отличия", font=("Segoe UI", 9), bg="#f8f9fa", fg="#3c4043").pack(side=tk.LEFT)
+
+        diff_boxes = tk.Frame(diff_section, bg="#f8f9fa")
+        diff_boxes.pack(fill=tk.X)
+        diff_boxes.columnconfigure(0, weight=1)
+        diff_boxes.columnconfigure(1, weight=1)
+
+        diff_left_wrap = tk.Frame(diff_boxes, bg="#f8f9fa")
+        diff_left_wrap.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        tk.Label(diff_left_wrap, text="1-ая программа", font=("Segoe UI", 9, "bold"), bg="#f8f9fa", fg="#5f6368").pack(anchor="w", pady=(0, 4))
+        diff_card_a = RoundedFrame(diff_left_wrap, bg_color="#0d1117", border_color="#30363d", radius=14, height=260)
+        diff_card_a.pack(fill=tk.BOTH, expand=True)
+
+        self.diff_text_a = tk.Text(
+            diff_card_a.inner_frame,
+            wrap=tk.NONE,
+            font=("Consolas", 10),
+            bg="#0d1117",
+            fg="#e6edf3",
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+            state=tk.DISABLED
+        )
+        self.diff_text_a.pack(fill=tk.BOTH, expand=True)
+
+        diff_right_wrap = tk.Frame(diff_boxes, bg="#f8f9fa")
+        diff_right_wrap.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+
+        tk.Label(diff_right_wrap, text="2-ая программа", font=("Segoe UI", 9, "bold"), bg="#f8f9fa", fg="#5f6368").pack(anchor="w", pady=(0, 4))
+        diff_card_b = RoundedFrame(diff_right_wrap, bg_color="#0d1117", border_color="#30363d", radius=14, height=260)
+        diff_card_b.pack(fill=tk.BOTH, expand=True)
+
+        self.diff_text_b = tk.Text(
+            diff_card_b.inner_frame,
+            wrap=tk.NONE,
+            font=("Consolas", 10),
+            bg="#0d1117",
+            fg="#e6edf3",
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+            state=tk.DISABLED
+        )
+        self.diff_text_b.pack(fill=tk.BOTH, expand=True)
+
+        self._configure_diff_tags(self.diff_text_a)
+        self._configure_diff_tags(self.diff_text_b)
+
+    def _configure_diff_tags(self, text_widget: tk.Text):
+        text_widget.tag_configure("lineno", foreground="#6e7681", background="#0d1117")
+        text_widget.tag_configure("neutral", foreground="#e6edf3", background="#0d1117")
+        text_widget.tag_configure("diff_line", foreground="#e6edf3", background="#2a1a0e")
+        text_widget.tag_configure("diff_token", foreground="#ffffff", background="#9e4a10")
+
+    def _on_diff_mode_change(self, event=None):
+        if self._last_highlights:
+            self._render_highlights(self._last_highlights)
+
+    def _clear_diff_views(self):
+        for widget in (self.diff_text_a, self.diff_text_b):
+            widget.configure(state=tk.NORMAL)
+            widget.delete("1.0", tk.END)
+            widget.configure(state=tk.DISABLED)
+
+    def _render_single_diff_widget(self, widget: tk.Text, lines_data):
+        widget.configure(state=tk.NORMAL)
+        widget.delete("1.0", tk.END)
+
+        total = len(lines_data)
+        for idx, line_info in enumerate(lines_data):
+            line_no = line_info["line_no"]
+            line_tag = line_info["line_tag"]
+            segments = line_info["segments"]
+
+            prefix = f"{line_no:>4}.  " if line_no is not None else "       "
+            widget.insert(tk.END, prefix, "lineno")
+
+            for seg_text, seg_tag in segments:
+                widget.insert(tk.END, seg_text, seg_tag)
+
+            if idx < total - 1:
+                widget.insert(tk.END, "\n", line_tag)
+
+        widget.configure(state=tk.DISABLED)
+
+    def _render_highlights(self, highlight_data):
+        mode_key = "code" if self.diff_mode_var.get() == "Сравнение кодов" else "tokens"
+        mode_data = highlight_data.get(mode_key)
+        if not mode_data:
+            return
+
+        self._render_single_diff_widget(self.diff_text_a, mode_data["left"])
+        self._render_single_diff_widget(self.diff_text_b, mode_data["right"])
 
     def _choose_file(self, is_first):
         if is_first:
@@ -464,6 +749,8 @@ class AntiPlagApp(tk.Tk):
         self._cancel_event.clear()
         self._pause_event.set()
         self._is_paused = False
+        self._last_highlights = None
+        self._clear_diff_views()
 
         self.start_btn.configure(state=tk.DISABLED)
         self.pause_btn.configure(state=tk.NORMAL)
@@ -538,8 +825,10 @@ class AntiPlagApp(tk.Tk):
 
         if lang == "C++":
             result = compare_cpp.compare(text_a, text_b)
+            highlight_data = highlights.get_highlights(text_a, text_b, lang)
         elif lang == "Pascal ABC":
             result = compare_pas.compare(text_a, text_b)
+            highlight_data = highlights.get_highlights(text_a, text_b, lang)
         else:
             result = {
                 "percent": 63,
@@ -561,6 +850,7 @@ class AntiPlagApp(tk.Tk):
                     },
                 ],
             }
+            highlight_data = None
 
         if self._wait_or_cancel():
             self._finish_cancelled()
@@ -572,7 +862,7 @@ class AntiPlagApp(tk.Tk):
         self._set_progress_ui(100, "Готово!")
         time.sleep(0.3)
 
-        self.after(0, lambda: self._show_results(result))
+        self.after(0, lambda: self._show_results(result, highlight_data))
 
     def _finish_cancelled(self):
         def _cb():
@@ -580,11 +870,12 @@ class AntiPlagApp(tk.Tk):
             self.progress_label.configure(text="Операция отменена")
             self.start_btn.configure(state=tk.NORMAL)
             self.pause_btn.configure(state=tk.DISABLED)
-            self.pause_btn.set_text("⏸  Пауза")
+            self.pause_btn.set_text("Пауза")
             self.cancel_btn.configure(state=tk.DISABLED)
             self.lang_combo.configure(state="readonly")
             self.score_label.configure(text="-- %", fg="#5f6368")
             self._clear_criteria()
+            self._clear_diff_views()
             self.empty_label.configure(text="Проверка была отменена пользователем", fg="#5f6368")
             self.empty_label.pack(anchor="center", pady=4)
         self.after(0, _cb)
@@ -594,7 +885,7 @@ class AntiPlagApp(tk.Tk):
             widget.destroy()
         self.empty_label = tk.Label(self.criteria_frame, font=("Segoe UI", 10), bg="#ffffff")
 
-    def _show_results(self, result):
+    def _show_results(self, result, highlight_data=None):
         pct = result.get("percent", 0)
         self.score_label.configure(text=f"{pct}%")
 
@@ -614,7 +905,7 @@ class AntiPlagApp(tk.Tk):
 
             tk.Label(
                 row,
-                text=f"•  {c['name']}: {c['value']}%",
+                text=f"{c['name']}: {c['value']}%",
                 font=("Segoe UI", 10, "bold"),
                 bg="#ffffff",
                 fg="#202124"
@@ -628,9 +919,13 @@ class AntiPlagApp(tk.Tk):
                 fg="#5f6368"
             ).pack(anchor="w")
 
+        self._last_highlights = highlight_data
+        if highlight_data:
+            self._render_highlights(highlight_data)
+
         self.start_btn.configure(state=tk.NORMAL)
         self.pause_btn.configure(state=tk.DISABLED)
-        self.pause_btn.set_text("⏸  Пауза")
+        self.pause_btn.set_text("Пауза")
         self.cancel_btn.configure(state=tk.DISABLED)
         self.lang_combo.configure(state="readonly")
 
