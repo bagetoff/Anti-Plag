@@ -1,4 +1,5 @@
 from collections import Counter
+
 import tokenizer_pas
 
 NUM_PLACEHOLDER = 'N'
@@ -6,7 +7,8 @@ STR_PLACEHOLDER = 'S'
 CHAR_PLACEHOLDER = 'C'
 IDENT_PLACEHOLDER = 'I'
 
-VOCAB_CHAR_START = 65
+VOCAB_CHAR_START = 100
+
 
 def encode_tokens(tokens, shared_vocab):
     encoded = []
@@ -63,7 +65,6 @@ def levenshtein_distance(seq_a, seq_b):
         current_row = [i] + [0] * m
 
         for j in range(1, m + 1):
-
             cost = 0 if seq_a[i - 1] == seq_b[j - 1] else 1
 
             current_row[j] = min(
@@ -79,9 +80,7 @@ def levenshtein_distance(seq_a, seq_b):
 
 def levenshtein_similarity(seq_a, seq_b):
     distance = levenshtein_distance(seq_a, seq_b)
-
     longest = max(len(seq_a), len(seq_b), 1)
-
     return max(0.0, 1 - distance / longest)
 
 
