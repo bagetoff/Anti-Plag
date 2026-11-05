@@ -17,8 +17,8 @@ def _tokenize_cpp_with_spans(code: str):
             if kind in tokenizer_cpp.ignored:
                 continue
 
-            if kind == "IDENT" and value in tokenizer_cpp.KEYWORDS:
-                kind = "KEYWORD"
+            if kind == "IDENT":
+                kind = tokenizer_cpp.classify_ident(value)
 
             spans.append({
                 "kind": kind,
@@ -95,8 +95,7 @@ def _tokenize_pas_with_spans(code: str):
 
         if kind == "IDENT":
             lower_value = value.lower()
-            if lower_value in tokenizer_pas.KEYWORDS:
-                kind = "KEYWORD"
+            kind = tokenizer_pas.classify_ident(lower_value)
             value = lower_value
 
         spans.append({
@@ -153,7 +152,7 @@ def _build_line_offsets(text: str):
     return result
 
 
-def _build_code_lines(text: str, spans, target_total_lines: int):
+def _build_code_lines(text: str, spans):
     line_infos = _build_line_offsets(text)
     rendered_lines = []
 
@@ -204,17 +203,10 @@ def _build_code_lines(text: str, spans, target_total_lines: int):
             "segments": segments,
         })
 
-    while len(rendered_lines) < target_total_lines:
-        rendered_lines.append({
-            "line_no": None,
-            "line_tag": "neutral",
-            "segments": [("", "neutral")],
-        })
-
     return rendered_lines
 
 
-def _build_token_lines(spans, target_total_tokens: int):
+def _build_token_lines(spans):
     rendered_lines = []
 
     for idx, s in enumerate(spans, start=1):
@@ -237,13 +229,6 @@ def _build_token_lines(spans, target_total_tokens: int):
             "segments": segments,
         })
 
-    while len(rendered_lines) < target_total_tokens:
-        rendered_lines.append({
-            "line_no": None,
-            "line_tag": "neutral",
-            "segments": [("", "neutral")],
-        })
-
     return rendered_lines
 
 
@@ -260,19 +245,13 @@ def get_highlights(text_a: str, text_b: str, lang: str):
 
     _mark_statuses(spans_a, spans_b, seq_a, seq_b)
 
-    lines_count_a = max(len(text_a.splitlines()), 1)
-    lines_count_b = max(len(text_b.splitlines()), 1)
-    max_code_lines = max(lines_count_a, lines_count_b)
-
-    max_token_lines = max(len(spans_a), len(spans_b), 1)
-
     return {
         "code": {
-            "left": _build_code_lines(text_a, spans_a, max_code_lines),
-            "right": _build_code_lines(text_b, spans_b, max_code_lines),
+            "left": _build_code_lines(text_a, spans_a),
+            "right": _build_code_lines(text_b, spans_b),
         },
         "tokens": {
-            "left": _build_token_lines(spans_a, max_token_lines),
-            "right": _build_token_lines(spans_b, max_token_lines),
+            "left": _build_token_lines(spans_a),
+            "right": _build_token_lines(spans_b),
         },
     }
