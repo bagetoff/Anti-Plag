@@ -13,21 +13,30 @@ import highlights
 cpp_extension = {".cpp"}
 python_extension = {".py"}
 pas_extension = {".pas"}
+txt_extension = {".txt"}
 
-all_supported_extensions = cpp_extension | python_extension | pas_extension
+all_supported_extensions = cpp_extension | python_extension | pas_extension | txt_extension
 
 
 class RoundedFrame(tk.Canvas):
-    def __init__(self, parent, bg_color="#ffffff", border_color="#dadce0", radius=16, border_width=1, **kwargs):
-        super().__init__(parent, bg=parent["bg"] if "bg" in parent.keys() else "#f8f9fa", highlightthickness=0, **kwargs)
+    def __init__(self, parent, bg_color="#ffffff", border_color="#dadce0", radius=16, border_width=1, inner_pad=8, **kwargs):
+        parent_bg = parent["bg"] if "bg" in parent.keys() else "#f8f9fa"
+        super().__init__(parent, bg=parent_bg, highlightthickness=0, bd=0, **kwargs)
         self.bg_color = bg_color
         self.border_color = border_color
         self.radius = radius
         self.border_width = border_width
+        self.inner_pad = inner_pad
         self.inner_frame = tk.Frame(self, bg=bg_color)
         self.window_id = self.create_window((0, 0), window=self.inner_frame, anchor="nw")
 
         self.bind("<Configure>", self._redraw)
+
+    def set_colors(self, bg_color, border_color):
+        self.bg_color = bg_color
+        self.border_color = border_color
+        self.inner_frame.configure(bg=bg_color)
+        self._redraw()
 
     def _draw_round_rect(self, x1, y1, x2, y2, r):
         points = [
@@ -53,21 +62,25 @@ class RoundedFrame(tk.Canvas):
             tags="bg_shape"
         )
 
-    def _redraw(self, event):
+    def _redraw(self, event=None):
         self.delete("bg_shape")
-        w, h = event.width, event.height
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w <= 2 or h <= 2:
+            return
         pad = self.border_width
         self._draw_round_rect(pad, pad, w - pad, h - pad, self.radius)
         self.tag_lower("bg_shape")
-        inner_pad = 8
-        self.coords(self.window_id, inner_pad, inner_pad)
-        self.itemconfigure(self.window_id, width=max(1, w - inner_pad * 2), height=max(1, h - inner_pad * 2))
+        ip = self.inner_pad
+        self.coords(self.window_id, ip, ip)
+        self.itemconfigure(self.window_id, width=max(1, w - ip * 2), height=max(1, h - ip * 2))
 
 
 class RoundedButton(tk.Canvas):
     def __init__(self, parent, text, command=None, bg_color="#e8eaed", hover_color="#dadce0",
-                 text_color="#202124", font=("Segoe UI", 9, "bold"), radius=16, **kwargs):
-        super().__init__(parent, bg=parent["bg"] if "bg" in parent.keys() else "#f8f9fa", highlightthickness=0, **kwargs)
+                 text_color="#202124", font=("Segoe UI", 9, "bold"), radius=15, **kwargs):
+        parent_bg = parent["bg"] if "bg" in parent.keys() else "#f8f9fa"
+        super().__init__(parent, bg=parent_bg, highlightthickness=0, bd=0, **kwargs)
         self.command = command
         self.text = text
         self.bg_color = bg_color
@@ -140,6 +153,187 @@ class RoundedButton(tk.Canvas):
         self._redraw()
 
 
+class RoundedDropdown(tk.Canvas):
+    def __init__(self, parent, textvariable, values, command=None, width=140, height=30,
+                 bg_color="#ffffff", border_color="#dadce0", hover_border="#1a73e8",
+                 text_color="#202124", font=("Segoe UI", 9), radius=15, **kwargs):
+        parent_bg = parent["bg"] if "bg" in parent.keys() else "#f8f9fa"
+        super().__init__(parent, width=width, height=height, bg=parent_bg, highlightthickness=0, bd=0, **kwargs)
+        self.textvariable = textvariable
+        self.values = list(values)
+        self.command = command
+        self.bg_color = bg_color
+        self.border_color = border_color
+        self.hover_border = hover_border
+        self.cur_border = border_color
+        self.text_color = text_color
+        self.font = font
+        self.radius = radius
+        self._state = tk.NORMAL
+        self._popup = None
+
+        self.textvariable.trace_add("write", lambda *args: self._redraw())
+
+        self.bind("<Configure>", self._redraw)
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+        self.bind("<Button-1>", self._toggle_popup)
+
+    def _draw_round_rect(self, x1, y1, x2, y2, r, fill, outline):
+        points = [
+            x1 + r, y1,
+            x2 - r, y1,
+            x2, y1,
+            x2, y1 + r,
+            x2, y2 - r,
+            x2, y2,
+            x2 - r, y2,
+            x1 + r, y2,
+            x1, y2,
+            x1, y2 - r,
+            x1, y1 + r,
+            x1, y1,
+        ]
+        return self.create_polygon(points, smooth=True, fill=fill, outline=outline, width=1)
+
+    def _redraw(self, event=None):
+        self.delete("all")
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w <= 2 or h <= 2:
+            return
+
+        fill = "#f1f3f4" if self._state == tk.DISABLED else self.bg_color
+        fg = "#9aa0a6" if self._state == tk.DISABLED else self.text_color
+        val = self.textvariable.get()
+        if val == "Не выбран" and self._state != tk.DISABLED:
+            fg = "#d93025"
+
+        outline = "#dadce0" if self._state == tk.DISABLED else self.cur_border
+        self._draw_round_rect(1, 1, w - 1, h - 1, self.radius, fill, outline)
+
+        self.create_text(12, h // 2, text=val, fill=fg, font=self.font, anchor="w")
+
+        cx = w - 15
+        cy = h // 2
+        self.create_line(cx - 4, cy - 2, cx, cy + 2, cx + 4, cy - 2, fill=fg, width=1.5, capstyle=tk.ROUND, joinstyle=tk.ROUND)
+
+    def _on_enter(self, event):
+        if self._state == tk.NORMAL:
+            self.cur_border = self.hover_border
+            self._redraw()
+
+    def _on_leave(self, event):
+        if self._state == tk.NORMAL and not self._popup:
+            self.cur_border = self.border_color
+            self._redraw()
+
+    def _toggle_popup(self, event=None):
+        if self._state != tk.NORMAL:
+            return
+        if self._popup and self._popup.winfo_exists():
+            self._close_popup()
+        else:
+            self._open_popup()
+
+    def _open_popup(self):
+        self._close_popup()
+        w = self.winfo_width()
+        item_h = 30
+        pad = 6
+        total_h = len(self.values) * item_h + pad * 2
+
+        x = self.winfo_rootx()
+        y = self.winfo_rooty() + self.winfo_height() + 3
+
+        self._popup = tk.Toplevel(self)
+        self._popup.overrideredirect(True)
+        self._popup.attributes("-topmost", True)
+        self._popup.configure(bg="#f8f9fa")
+        self._popup.geometry(f"{w}x{total_h}+{x}+{y}")
+
+        canvas = tk.Canvas(self._popup, width=w, height=total_h, bg="#f8f9fa", highlightthickness=0, bd=0)
+        canvas.pack(fill=tk.BOTH, expand=True)
+
+        r = 12
+        x1, y1, x2, y2 = 1, 1, w - 1, total_h - 1
+        points = [
+            x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r,
+            x2, y2 - r, x2, y2, x2 - r, y2, x1 + r, y2,
+            x1, y2, x1, y2 - r, x1, y1 + r, x1, y1,
+        ]
+        canvas.create_polygon(points, smooth=True, fill="#ffffff", outline="#dadce0", width=1)
+
+        current_val = self.textvariable.get()
+
+        for idx, item_text in enumerate(self.values):
+            iy1 = pad + idx * item_h
+            iy2 = iy1 + item_h
+
+            is_selected = (item_text == current_val)
+            bg_tag = f"item_bg_{idx}"
+            txt_tag = f"item_txt_{idx}"
+
+            rx1, rx2 = 5, w - 5
+            ir = 8
+            r_pts = [
+                rx1 + ir, iy1 + 1, rx2 - ir, iy1 + 1, rx2, iy1 + 1, rx2, iy1 + 1 + ir,
+                rx2, iy2 - 1 - ir, rx2, iy2 - 1, rx2 - ir, iy2 - 1, rx1 + ir, iy2 - 1,
+                rx1, iy2 - 1, rx1, iy2 - 1 - ir, rx1, iy1 + 1 + ir, rx1, iy1 + 1,
+            ]
+            init_fill = "#e8f0fe" if is_selected else "#ffffff"
+            init_fg = "#1a73e8" if is_selected else "#202124"
+
+            canvas.create_polygon(r_pts, smooth=True, fill=init_fill, outline="", tags=(bg_tag, f"row_{idx}"))
+            canvas.create_text(
+                14, (iy1 + iy2) // 2,
+                text=item_text,
+                fill=init_fg,
+                font=("Segoe UI", 9, "bold" if is_selected else "normal"),
+                anchor="w",
+                tags=(txt_tag, f"row_{idx}")
+            )
+
+            def on_enter_row(e, b_tag=bg_tag, sel=is_selected):
+                canvas.itemconfigure(b_tag, fill="#e8f0fe" if sel else "#f1f3f4")
+
+            def on_leave_row(e, b_tag=bg_tag, sel=is_selected):
+                canvas.itemconfigure(b_tag, fill="#e8f0fe" if sel else "#ffffff")
+
+            def on_click_row(e, val=item_text):
+                self._select_value(val)
+
+            canvas.tag_bind(f"row_{idx}", "<Enter>", on_enter_row)
+            canvas.tag_bind(f"row_{idx}", "<Leave>", on_leave_row)
+            canvas.tag_bind(f"row_{idx}", "<Button-1>", on_click_row)
+
+        self._popup.bind("<FocusOut>", lambda e: self._close_popup())
+        self._popup.bind("<Escape>", lambda e: self._close_popup())
+        self._popup.focus_force()
+
+    def _select_value(self, val):
+        self.textvariable.set(val)
+        self._close_popup()
+        if self.command:
+            self.command(val)
+
+    def _close_popup(self):
+        if self._popup and self._popup.winfo_exists():
+            self._popup.destroy()
+        self._popup = None
+        self.cur_border = self.border_color
+        self._redraw()
+
+    def configure(self, **kwargs):
+        if "state" in kwargs:
+            st = kwargs.pop("state")
+            self._state = tk.DISABLED if st in ("disabled", tk.DISABLED) else tk.NORMAL
+            if self._state == tk.DISABLED:
+                self._close_popup()
+        super().configure(**kwargs)
+        self._redraw()
+
+
 class RoundedProgressBar(tk.Canvas):
     def __init__(self, parent, height=12, bg_color="#ffffff", border_color="#dadce0",
                  fill_color="#1a73e8", **kwargs):
@@ -174,7 +368,6 @@ class RoundedProgressBar(tk.Canvas):
 
         cy = h / 2.0
         r_outer = h / 2.0
-        r_inner = (h - 2) / 2.0
 
         self.create_line(
             r_outer, cy, w - r_outer, cy,
@@ -308,11 +501,19 @@ class AntiPlagApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AntiPlag App")
-        self.geometry("980x920")
-        self.minsize(820, 520)
+
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        win_w = max(920, int(screen_w * 3 / 5))
+        win_h = max(620, int(screen_h * 2 / 3))
+        pos_x = max(0, (screen_w - win_w) // 2)
+        pos_y = max(0, (screen_h - win_h) // 2)
+        self.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
+        self.minsize(880, 560)
         self.configure(bg="#f8f9fa")
 
-        self.lang_var = tk.StringVar(value="C++")
+        self.lang_a_var = tk.StringVar(value="C++")
+        self.lang_b_var = tk.StringVar(value="C++")
         self.diff_mode_var = tk.StringVar(value="Сравнение кодов")
 
         self._ext_a = None
@@ -337,7 +538,6 @@ class AntiPlagApp(tk.Tk):
             pass
 
         self.style.configure(".", font=("Segoe UI", 10), background="#f8f9fa")
-        self.style.configure("TCombobox", padding=4)
 
     def _build_scrollable_window(self):
         self.canvas = tk.Canvas(self, bg="#f8f9fa", highlightthickness=0)
@@ -378,11 +578,7 @@ class AntiPlagApp(tk.Tk):
             else:
                 step = 1
 
-            if widget in (self.diff_text_a, self.diff_text_b):
-                self.diff_text_a.yview_scroll(step, "units")
-                self.diff_text_b.yview_scroll(step, "units")
-            else:
-                widget.yview_scroll(step, "units")
+            widget.yview_scroll(step, "units")
             return "break"
 
         units = int(-1 * (event.delta / 120)) if event.delta else (-1 if event.num == 4 else 1)
@@ -408,7 +604,7 @@ class AntiPlagApp(tk.Tk):
         header_lbl.pack(anchor="center", pady=(0, 14))
 
         codes_container = tk.Frame(self.scrollable_content, bg="#f8f9fa")
-        codes_container.pack(fill=tk.X, pady=(0, 10))
+        codes_container.pack(fill=tk.X, pady=(0, 6))
         codes_container.columnconfigure(0, weight=1)
         codes_container.columnconfigure(1, weight=1)
 
@@ -428,10 +624,22 @@ class AntiPlagApp(tk.Tk):
         )
         btn_a.pack(side=tk.RIGHT)
 
-        card_a = RoundedFrame(frame_a_wrapper, bg_color="#ffffff", border_color="#dadce0", radius=14, height=220)
+        self.lang_dropdown_a = RoundedDropdown(
+            top_row_a,
+            textvariable=self.lang_a_var,
+            values=["C++", "Pascal ABC", "Python"],
+            command=lambda _: self._validate_state(),
+            width=120,
+            height=30,
+            radius=15
+        )
+        self.lang_dropdown_a.pack(side=tk.RIGHT, padx=(0, 8))
+
+        card_a = RoundedFrame(frame_a_wrapper, bg_color="#ffffff", border_color="#dadce0", radius=14, height=210)
         card_a.pack(fill=tk.BOTH, expand=True)
         self.text_a = tk.Text(card_a.inner_frame, wrap=tk.NONE, font=("Consolas", 10), bg="#ffffff", fg="#202124", relief=tk.FLAT, bd=0, highlightthickness=0)
         self.text_a.pack(fill=tk.BOTH, expand=True)
+        self.text_a.bind("<KeyRelease>", lambda e: self._validate_state(silent_empty=True))
 
         frame_b_wrapper = tk.Frame(codes_container, bg="#f8f9fa")
         frame_b_wrapper.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
@@ -449,30 +657,48 @@ class AntiPlagApp(tk.Tk):
         )
         btn_b.pack(side=tk.RIGHT)
 
-        card_b = RoundedFrame(frame_b_wrapper, bg_color="#ffffff", border_color="#dadce0", radius=14, height=220)
+        self.lang_dropdown_b = RoundedDropdown(
+            top_row_b,
+            textvariable=self.lang_b_var,
+            values=["C++", "Pascal ABC", "Python"],
+            command=lambda _: self._validate_state(),
+            width=120,
+            height=30,
+            radius=15
+        )
+        self.lang_dropdown_b.pack(side=tk.RIGHT, padx=(0, 8))
+
+        card_b = RoundedFrame(frame_b_wrapper, bg_color="#ffffff", border_color="#dadce0", radius=14, height=210)
         card_b.pack(fill=tk.BOTH, expand=True)
         self.text_b = tk.Text(card_b.inner_frame, wrap=tk.NONE, font=("Consolas", 10), bg="#ffffff", fg="#202124", relief=tk.FLAT, bd=0, highlightthickness=0)
         self.text_b.pack(fill=tk.BOTH, expand=True)
+        self.text_b.bind("<KeyRelease>", lambda e: self._validate_state(silent_empty=True))
+
+        self.warning_wrapper = tk.Frame(self.scrollable_content, bg="#f8f9fa")
+        self.warning_wrapper.pack(fill=tk.X)
+
+        self.warning_card = RoundedFrame(
+            self.warning_wrapper,
+            bg_color="#fef7e0",
+            border_color="#f9ab00",
+            radius=12,
+            height=38,
+            inner_pad=6
+        )
+        self.warning_label = tk.Label(
+            self.warning_card.inner_frame,
+            text="",
+            font=("Segoe UI", 9, "bold"),
+            bg="#fef7e0",
+            fg="#b06000"
+        )
+        self.warning_label.pack(anchor="center", expand=True)
 
         control_frame = tk.Frame(self.scrollable_content, bg="#f8f9fa")
         control_frame.pack(fill=tk.X, pady=(8, 12))
 
         btn_row = tk.Frame(control_frame, bg="#f8f9fa")
         btn_row.pack(fill=tk.X, pady=(0, 10))
-
-        lang_box_frame = tk.Frame(btn_row, bg="#f8f9fa")
-        lang_box_frame.pack(side=tk.LEFT, padx=(0, 14))
-
-        tk.Label(lang_box_frame, text="Язык:", font=("Segoe UI", 9, "bold"), bg="#f8f9fa", fg="#3c4043").pack(side=tk.LEFT, padx=(0, 6))
-        self.lang_combo = ttk.Combobox(
-            lang_box_frame,
-            textvariable=self.lang_var,
-            values=["C++", "Python", "Pascal ABC"],
-            state="readonly",
-            width=12,
-            font=("Segoe UI", 9)
-        )
-        self.lang_combo.pack(side=tk.LEFT)
 
         self.start_btn = RoundedButton(
             btn_row, text="Запустить проверку", command=self.start_comparison,
@@ -503,23 +729,29 @@ class AntiPlagApp(tk.Tk):
         self.progress_bar = RoundedProgressBar(control_frame, height=12)
         self.progress_bar.pack(fill=tk.X)
 
-        self.result_card = RoundedFrame(self.scrollable_content, bg_color="#ffffff", border_color="#dadce0", radius=16, height=230)
-        self.result_card.pack(fill=tk.X, pady=(8, 16))
+        self.results_section = tk.Frame(self.scrollable_content, bg="#f8f9fa")
+        self.results_section.pack(fill=tk.X, pady=(6, 14))
 
-        self.score_label = tk.Label(self.result_card.inner_frame, text="-- %", font=("Segoe UI", 32, "bold"), bg="#ffffff", fg="#5f6368")
-        self.score_label.pack(anchor="center", pady=(4, 6))
+        self.score_label = tk.Label(
+            self.results_section,
+            text="-- %",
+            font=("Segoe UI", 34, "bold"),
+            bg="#f8f9fa",
+            fg="#5f6368"
+        )
+        self.score_label.pack(anchor="center", pady=(2, 8))
 
-        self.criteria_frame = tk.Frame(self.result_card.inner_frame, bg="#ffffff")
-        self.criteria_frame.pack(fill=tk.X, padx=12, pady=(0, 8))
+        self.criteria_frame = tk.Frame(self.results_section, bg="#f8f9fa")
+        self.criteria_frame.pack(fill=tk.X)
 
         self.empty_label = tk.Label(
             self.criteria_frame,
             text="Загрузите файлы или вставьте код, после чего запустите проверку",
             font=("Segoe UI", 10),
-            bg="#ffffff",
+            bg="#f8f9fa",
             fg="#5f6368"
         )
-        self.empty_label.pack(anchor="center", pady=4)
+        self.empty_label.pack(anchor="center", pady=6)
 
         diff_section = tk.Frame(self.scrollable_content, bg="#f8f9fa")
         diff_section.pack(fill=tk.X, pady=(4, 20))
@@ -535,16 +767,16 @@ class AntiPlagApp(tk.Tk):
             fg="#3c4043"
         ).pack(side=tk.LEFT, padx=(0, 8))
 
-        self.diff_mode_combo = ttk.Combobox(
+        self.diff_mode_dropdown = RoundedDropdown(
             diff_header,
             textvariable=self.diff_mode_var,
             values=["Сравнение кодов", "Сравнение токенов"],
-            state="readonly",
-            width=20,
-            font=("Segoe UI", 9)
+            command=self._on_diff_mode_change,
+            width=175,
+            height=30,
+            radius=15
         )
-        self.diff_mode_combo.pack(side=tk.LEFT)
-        self.diff_mode_combo.bind("<<ComboboxSelected>>", self._on_diff_mode_change)
+        self.diff_mode_dropdown.pack(side=tk.LEFT)
 
         legend_frame = tk.Frame(diff_header, bg="#f8f9fa")
         legend_frame.pack(side=tk.RIGHT)
@@ -562,7 +794,7 @@ class AntiPlagApp(tk.Tk):
         diff_left_wrap.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
 
         tk.Label(diff_left_wrap, text="1-ая программа", font=("Segoe UI", 9, "bold"), bg="#f8f9fa", fg="#5f6368").pack(anchor="w", pady=(0, 4))
-        diff_card_a = RoundedFrame(diff_left_wrap, bg_color="#0d1117", border_color="#30363d", radius=14, height=260)
+        diff_card_a = RoundedFrame(diff_left_wrap, bg_color="#0d1117", border_color="#30363d", radius=14, height=250)
         diff_card_a.pack(fill=tk.BOTH, expand=True)
 
         self.diff_text_a = tk.Text(
@@ -582,7 +814,7 @@ class AntiPlagApp(tk.Tk):
         diff_right_wrap.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
 
         tk.Label(diff_right_wrap, text="2-ая программа", font=("Segoe UI", 9, "bold"), bg="#f8f9fa", fg="#5f6368").pack(anchor="w", pady=(0, 4))
-        diff_card_b = RoundedFrame(diff_right_wrap, bg_color="#0d1117", border_color="#30363d", radius=14, height=260)
+        diff_card_b = RoundedFrame(diff_right_wrap, bg_color="#0d1117", border_color="#30363d", radius=14, height=250)
         diff_card_b.pack(fill=tk.BOTH, expand=True)
 
         self.diff_text_b = tk.Text(
@@ -601,13 +833,65 @@ class AntiPlagApp(tk.Tk):
         self._configure_diff_tags(self.diff_text_a)
         self._configure_diff_tags(self.diff_text_b)
 
+    def _show_warning(self, message: str, is_error: bool = False):
+        if is_error:
+            bg, border, fg = "#fce8e6", "#d93025", "#c5221f"
+        else:
+            bg, border, fg = "#fef7e0", "#f9ab00", "#b06000"
+
+        self.warning_card.set_colors(bg, border)
+        self.warning_label.configure(text=message, bg=bg, fg=fg)
+        if not self.warning_card.winfo_ismapped():
+            self.warning_card.pack(fill=tk.X, pady=(4, 4))
+
+    def _hide_warning(self):
+        if self.warning_card.winfo_ismapped():
+            self.warning_card.pack_forget()
+
+    def _validate_state(self, silent_empty=True):
+        lang_a = self.lang_a_var.get()
+        lang_b = self.lang_b_var.get()
+
+        if lang_a == "Не выбран" and lang_b == "Не выбран":
+            self._show_warning("Загружены файлы .txt — выберите язык программирования над обоими полями кода")
+            return False
+        if lang_a == "Не выбран":
+            self._show_warning("Для 1-ой программы (.txt) необходимо выбрать язык программирования в списке сверху")
+            return False
+        if lang_b == "Не выбран":
+            self._show_warning("Для 2-ой программы (.txt) необходимо выбрать язык программирования в списке сверху")
+            return False
+
+        if lang_a != lang_b:
+            self._show_warning(
+                f"Сравнение невозможно: выбраны разные языки программирования ({lang_a} и {lang_b})",
+                is_error=True
+            )
+            return False
+
+        if not silent_empty:
+            text_a = self.text_a.get("1.0", tk.END).strip()
+            text_b = self.text_b.get("1.0", tk.END).strip()
+            if not text_a and not text_b:
+                self._show_warning("Оба поля кода пусты — загрузите файлы или вставьте код для сравнения", is_error=True)
+                return False
+            if not text_a:
+                self._show_warning("Поле 1-ой программы пустое — загрузите файл или вставьте исходный код", is_error=True)
+                return False
+            if not text_b:
+                self._show_warning("Поле 2-ой программы пустое — загрузите файл или вставьте исходный код", is_error=True)
+                return False
+
+        self._hide_warning()
+        return True
+
     def _configure_diff_tags(self, text_widget: tk.Text):
         text_widget.tag_configure("lineno", foreground="#6e7681", background="#0d1117")
         text_widget.tag_configure("neutral", foreground="#e6edf3", background="#0d1117")
         text_widget.tag_configure("diff_line", foreground="#e6edf3", background="#2a1a0e")
         text_widget.tag_configure("diff_token", foreground="#ffffff", background="#9e4a10")
 
-    def _on_diff_mode_change(self, event=None):
+    def _on_diff_mode_change(self, _=None):
         if self._last_highlights:
             self._render_highlights(self._last_highlights)
 
@@ -648,103 +932,67 @@ class AntiPlagApp(tk.Tk):
         self._render_single_diff_widget(self.diff_text_b, mode_data["right"])
 
     def _choose_file(self, is_first):
-        if is_first:
-            filetypes = [("Program Files", "*.cpp *.py *.pas"), ("Все файлы", "*.*")]
-        else:
-            selected_lang = self.lang_var.get()
-            if selected_lang == "C++":
-                filetypes = [("C++ Files", "*.cpp"), ("Все файлы", "*.*")]
-            elif selected_lang == "Python":
-                filetypes = [("Python Files", "*.py"), ("Все файлы", "*.*")]
-            elif selected_lang == "Pascal ABC":
-                filetypes = [("Pascal Files", "*.pas"), ("Все файлы", "*.*")]
+        filetypes = [
+            ("Поддерживаемые файлы", "*.cpp *.pas *.py *.txt"),
+            ("C++ Files", "*.cpp"),
+            ("Pascal Files", "*.pas"),
+            ("Python Files", "*.py"),
+            ("Text Files", "*.txt"),
+            ("Все файлы", "*.*"),
+        ]
 
         filepath = filedialog.askopenfilename(
             title="Выберите файл программы",
             filetypes=filetypes
         )
 
-        if filepath:
-            ext = Path(filepath).suffix.lower()
-
-            if ext not in all_supported_extensions:
-                messagebox.showerror(
-                    "ERROR: Unsupported File Format (UFF E-003)",
-                    f"Неподдерживаемый формат файла: '{ext}'!\n"
-                    "Поддерживаются только исходные файлы C++ (.cpp), Python (.py) и Pascal (.pas)."
-                )
-                return
-
-            if is_first:
-                if ext in python_extension:
-                    self.lang_var.set("Python")
-                elif ext in pas_extension:
-                    self.lang_var.set("Pascal ABC")
-                elif ext in cpp_extension:
-                    self.lang_var.set("C++")
-
-                self._ext_a = ext
-            else:
-                expected_lang = self.lang_var.get()
-                actual_lang = self._get_lang_for_extension(ext)
-
-                if actual_lang != expected_lang:
-                    messagebox.showerror(
-                        "ERROR: Language Mismatch (LMM E-002)",
-                        f"Для второй программы нужно выбрать файл языка {expected_lang}!"
-                    )
-                    return
-
-                self._ext_b = ext
-
-            try:
-                with open(filepath, "r", encoding="utf-8", errors="replace") as f:
-                    content = f.read()
-                target_text = self.text_a if is_first else self.text_b
-                target_text.delete("1.0", tk.END)
-                target_text.insert(tk.END, content)
-            except Exception as e:
-                messagebox.showerror("Ошибка чтения файла", f"Не удалось прочитать файл:\n{e}")
-
-    def _get_lang_for_extension(self, ext):
-        if ext in cpp_extension:
-            return "C++"
-        if ext in python_extension:
-            return "Python"
-        if ext in pas_extension:
-            return "Pascal ABC"
-        return None
-
-    def start_comparison(self):
-        text_a = self.text_a.get("1.0", tk.END).strip()
-        text_b = self.text_b.get("1.0", tk.END).strip()
-
-        if not text_a or not text_b:
-            messagebox.showwarning("ERROR: Can't Compare Files (CCF E-001)", "Вы не заполнили все обязательные поля!")
+        if not filepath:
             return
 
-        lang = self.lang_var.get()
+        ext = Path(filepath).suffix.lower()
 
-        if self._ext_a and self._ext_b:
-            lang_a = self._get_lang_for_extension(self._ext_a)
-            lang_b = self._get_lang_for_extension(self._ext_b)
+        if ext not in all_supported_extensions:
+            self._show_warning(
+                f"Неподдерживаемое расширение файла '{ext}'. Разрешены только: .cpp, .pas, .py, .txt",
+                is_error=True
+            )
+            return
 
-            if lang_a != lang_b:
-                messagebox.showerror(
-                    "ERROR: Language Mismatch (LMM E-002)",
-                    f"Невозможно сравнить файлы разных языков программирования!\n\n"
-                    f"Файл 1: {self._ext_a} ({lang_a})\n"
-                    f"Файл 2: {self._ext_b} ({lang_b})\n\n"
-                    "Для проверки загрузите файлы одного и того же языка."
-                )
-                return
+        target_lang_var = self.lang_a_var if is_first else self.lang_b_var
 
-            if lang != lang_a:
-                messagebox.showerror(
-                    "ERROR: Language Mode Mismatch (LMM E-004)",
-                    f"Выбранный режим анализа ({lang}) не соответствует расширению загруженных файлов ({self._ext_a})!"
-                )
-                return
+        if ext in cpp_extension:
+            target_lang_var.set("C++")
+        elif ext in pas_extension:
+            target_lang_var.set("Pascal ABC")
+        elif ext in python_extension:
+            target_lang_var.set("Python")
+        elif ext in txt_extension:
+            target_lang_var.set("Не выбран")
+
+        if is_first:
+            self._ext_a = ext
+        else:
+            self._ext_b = ext
+
+        try:
+            with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+            target_text = self.text_a if is_first else self.text_b
+            target_text.delete("1.0", tk.END)
+            target_text.insert(tk.END, content)
+        except Exception as e:
+            self._show_warning(f"Ошибка чтения файла: {e}", is_error=True)
+            return
+
+        self._validate_state(silent_empty=True)
+
+    def start_comparison(self):
+        if not self._validate_state(silent_empty=False):
+            return
+
+        text_a = self.text_a.get("1.0", tk.END).strip()
+        text_b = self.text_b.get("1.0", tk.END).strip()
+        lang = self.lang_a_var.get()
 
         self._cancel_event.clear()
         self._pause_event.set()
@@ -756,12 +1004,13 @@ class AntiPlagApp(tk.Tk):
         self.pause_btn.configure(state=tk.NORMAL)
         self.pause_btn.set_text("Пауза")
         self.cancel_btn.configure(state=tk.NORMAL)
-        self.lang_combo.configure(state="disabled")
+        self.lang_dropdown_a.configure(state="disabled")
+        self.lang_dropdown_b.configure(state="disabled")
 
         self.score_label.configure(text="-- %", fg="#5f6368")
         self._clear_criteria()
         self.empty_label.configure(text="Идёт анализ программ...", fg="#5f6368")
-        self.empty_label.pack(anchor="center", pady=4)
+        self.empty_label.pack(anchor="center", pady=6)
 
         self.progress_bar["value"] = 0
         self.progress_label.configure(text="Запуск процесса...")
@@ -872,18 +1121,21 @@ class AntiPlagApp(tk.Tk):
             self.pause_btn.configure(state=tk.DISABLED)
             self.pause_btn.set_text("Пауза")
             self.cancel_btn.configure(state=tk.DISABLED)
-            self.lang_combo.configure(state="readonly")
+            self.lang_dropdown_a.configure(state=tk.NORMAL)
+            self.lang_dropdown_b.configure(state=tk.NORMAL)
             self.score_label.configure(text="-- %", fg="#5f6368")
             self._clear_criteria()
             self._clear_diff_views()
             self.empty_label.configure(text="Проверка была отменена пользователем", fg="#5f6368")
-            self.empty_label.pack(anchor="center", pady=4)
+            self.empty_label.pack(anchor="center", pady=6)
         self.after(0, _cb)
 
     def _clear_criteria(self):
         for widget in self.criteria_frame.winfo_children():
             widget.destroy()
-        self.empty_label = tk.Label(self.criteria_frame, font=("Segoe UI", 10), bg="#ffffff")
+        for col in range(3):
+            self.criteria_frame.columnconfigure(col, weight=0, uniform="")
+        self.empty_label = tk.Label(self.criteria_frame, font=("Segoe UI", 10), bg="#f8f9fa")
 
     def _show_results(self, result, highlight_data=None):
         pct = result.get("percent", 0)
@@ -899,25 +1151,49 @@ class AntiPlagApp(tk.Tk):
         self.score_label.configure(fg=color)
         self._clear_criteria()
 
-        for c in result.get("criteria", []):
-            row = tk.Frame(self.criteria_frame, bg="#ffffff")
-            row.pack(fill=tk.X, pady=3)
+        criteria_list = result.get("criteria", [])
+        for idx, c in enumerate(criteria_list):
+            self.criteria_frame.columnconfigure(idx, weight=1, uniform="crit")
 
-            tk.Label(
-                row,
-                text=f"{c['name']}: {c['value']}%",
+            padx = (0, 6) if idx == 0 else ((6, 6) if idx == 1 else (6, 0))
+            card = RoundedFrame(
+                self.criteria_frame,
+                bg_color="#ffffff",
+                border_color="#dadce0",
+                radius=14,
+                height=104,
+                inner_pad=12
+            )
+            card.grid(row=0, column=idx, sticky="nsew", padx=padx, pady=2)
+
+            val_str = f"{c['value']}%" if c.get("value") is not None else "--%"
+            title_lbl = tk.Label(
+                card.inner_frame,
+                text=f"{c['name']}: {val_str}",
                 font=("Segoe UI", 10, "bold"),
                 bg="#ffffff",
-                fg="#202124"
-            ).pack(anchor="w")
+                fg="#202124",
+                anchor="w",
+                justify=tk.LEFT
+            )
+            title_lbl.pack(fill=tk.X, pady=(0, 4))
 
-            tk.Label(
-                row,
-                text=f"    {c['note']}",
+            note_lbl = tk.Label(
+                card.inner_frame,
+                text=c["note"],
                 font=("Segoe UI", 9),
                 bg="#ffffff",
-                fg="#5f6368"
-            ).pack(anchor="w")
+                fg="#5f6368",
+                anchor="w",
+                justify=tk.LEFT,
+                wraplength=260
+            )
+            note_lbl.pack(fill=tk.X)
+
+            card.inner_frame.bind(
+                "<Configure>",
+                lambda e, lbl=note_lbl: lbl.configure(wraplength=max(120, e.width - 8))
+            )
 
         self._last_highlights = highlight_data
         if highlight_data:
@@ -927,7 +1203,8 @@ class AntiPlagApp(tk.Tk):
         self.pause_btn.configure(state=tk.DISABLED)
         self.pause_btn.set_text("Пауза")
         self.cancel_btn.configure(state=tk.DISABLED)
-        self.lang_combo.configure(state="readonly")
+        self.lang_dropdown_a.configure(state=tk.NORMAL)
+        self.lang_dropdown_b.configure(state=tk.NORMAL)
 
         self.after(100, lambda: self.canvas.yview_moveto(1.0))
 
