@@ -2,18 +2,31 @@ import re
 
 KEYWORDS = {
     "alignas", "alignof", "and", "and_eq", "asm", "atomic_cancel", "atomic_commit",
-    "atomic_noexcept", "auto", "bitand", "bitor", "bool", "break", "case", "catch",
-    "char", "char8_t", "char16_t", "char32_t", "class", "compl", "concept", "const",
-    "consteval", "constexpr", "constinit", "const_cast", "continue", "co_await",
-    "co_return", "co_yield", "decltype", "default", "delete", "do", "double",
-    "dynamic_cast", "else", "enum", "explicit", "export", "extern", "false",
-    "float", "for", "friend", "goto", "if", "inline", "int", "long", "mutable",
-    "namespace", "new", "noexcept", "not", "not_eq", "nullptr", "operator", "or",
-    "or_eq", "private", "protected", "public", "register", "reinterpret_cast",
-    "requires", "return", "short", "signed", "sizeof", "static", "static_assert",
-    "static_cast", "struct", "switch", "template", "this", "thread_local", "throw",
-    "true", "try", "typedef", "typeid", "typename", "union", "unsigned", "using",
-    "virtual", "void", "volatile", "wchar_t", "while", "xor", "xor_eq",
+    "atomic_noexcept", "bitand", "bitor", "break", "case", "catch", "class",
+    "compl", "concept", "const", "consteval", "constexpr", "constinit", "const_cast",
+    "continue", "co_await", "co_return", "co_yield", "decltype", "default", "delete",
+    "do", "dynamic_cast", "else", "enum", "explicit", "export", "extern", "false",
+    "for", "friend", "goto", "if", "inline", "mutable", "namespace", "new",
+    "noexcept", "not", "not_eq", "nullptr", "operator", "or", "or_eq", "private",
+    "protected", "public", "register", "reinterpret_cast", "requires", "return",
+    "sizeof", "static", "static_assert", "static_cast", "struct", "switch",
+    "template", "this", "thread_local", "throw", "true", "try", "typedef", "typeid",
+    "typename", "union", "using", "virtual", "volatile", "while", "xor", "xor_eq",
+}
+
+TYPES = {
+    "auto", "bool", "char", "char8_t", "char16_t", "char32_t", "double", "float",
+    "int", "long", "short", "signed", "unsigned", "void", "wchar_t", "size_t",
+    "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t",
+    "string", "vector", "map", "set", "unordered_map", "unordered_set", "pair",
+    "queue", "stack", "deque", "list", "array",
+}
+
+BUILTINS = {
+    "std", "main", "cin", "cout", "cerr", "clog", "endl", "ws",
+    "printf", "scanf", "puts", "gets", "getchar", "putchar",
+    "sort", "swap", "min", "max", "abs", "sqrt", "pow", "sin", "cos", "tan",
+    "malloc", "calloc", "realloc", "free", "exit", "abort",
 }
 
 token_spec = [
@@ -48,6 +61,16 @@ preproc_line_re = re.compile(r"^[ \t]*#(?:.*\\\r?\n)*.*$", re.MULTILINE)
 include_target_re = re.compile(r'<[^>\n]+>|"[^"\n]+"')
 
 
+def classify_ident(value: str) -> str:
+    if value in KEYWORDS:
+        return "KEYWORD"
+    if value in TYPES:
+        return "TYPE"
+    if value in BUILTINS:
+        return "BUILTIN"
+    return "IDENT"
+
+
 def tokenize_core(text: str):
     tokens = []
 
@@ -58,8 +81,8 @@ def tokenize_core(text: str):
         if kind in ignored:
             continue
 
-        if kind == "IDENT" and value in KEYWORDS:
-            kind = "KEYWORD"
+        if kind == "IDENT":
+            kind = classify_ident(value)
 
         tokens.append((kind, value))
 
