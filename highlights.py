@@ -3,6 +3,7 @@ import re
 
 import tokenizer_cpp
 import tokenizer_pas
+import tokenizer_py
 
 
 def _tokenize_cpp_with_spans(code: str):
@@ -97,6 +98,29 @@ def _tokenize_pas_with_spans(code: str):
             lower_value = value.lower()
             kind = tokenizer_pas.classify_ident(lower_value)
             value = lower_value
+
+        spans.append({
+            "kind": kind,
+            "value": value,
+            "start": match.start(),
+            "end": match.end(),
+        })
+
+    return spans
+
+
+def _tokenize_py_with_spans(code: str):
+    spans = []
+
+    for match in tokenizer_py.master_re.finditer(code):
+        kind = match.lastgroup
+        value = match.group()
+
+        if kind in tokenizer_py.ignored:
+            continue
+
+        if kind == "IDENT":
+            kind = tokenizer_py.classify_ident(value)
 
         spans.append({
             "kind": kind,
@@ -215,7 +239,7 @@ def _build_token_lines(spans):
         tok_tag = "diff_token" if is_diff else "neutral"
 
         kind_str = f"{s['kind']:<14}"
-        val_str = f"{s['value']}"
+        val_str = s["value"].replace("\n", "\\n")
 
         segments = [
             (kind_str, tok_tag),
@@ -236,6 +260,9 @@ def get_highlights(text_a: str, text_b: str, lang: str):
     if lang == "Pascal ABC":
         spans_a = _tokenize_pas_with_spans(text_a)
         spans_b = _tokenize_pas_with_spans(text_b)
+    elif lang == "Python":
+        spans_a = _tokenize_py_with_spans(text_a)
+        spans_b = _tokenize_py_with_spans(text_b)
     else:
         spans_a = _tokenize_cpp_with_spans(text_a)
         spans_b = _tokenize_cpp_with_spans(text_b)
